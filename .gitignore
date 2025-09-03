@@ -1,0 +1,4 @@
+aclImdb/
+
+# Virtual environment
+.venv/

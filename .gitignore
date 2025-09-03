@@ -2,3 +2,6 @@ aclImdb/
 
 # Virtual environment
 .venv/
+
+# VSCode settings
+.vscode/

@@ -2,500 +2,411 @@ import streamlit as st
 import joblib
 import pandas as pd
 import numpy as np
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-import seaborn as sns
-import matplotlib.pyplot as plt
-import os
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
+import time
 
 # Page configuration
 st.set_page_config(
-    page_title="Sentiment Analysis App",
-    page_icon="😊",
-    layout="wide"
+    page_title="Movie Review Sentiment Analyzer",
+    page_icon="🎬",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # Custom CSS for better styling
 st.markdown("""
 <style>
-.sentiment-positive {
-    background-color: #d4edda;
-    border: 1px solid #c3e6cb;
-    border-radius: 0.25rem;
-    padding: 0.75rem;
-    color: #155724;
-}
-.sentiment-negative {
-    background-color: #f8d7da;
-    border: 1px solid #f5c6cb;
-    border-radius: 0.25rem;
-    padding: 0.75rem;
-    color: #721c24;
-}
-.sentiment-neutral {
-    background-color: #fff3cd;
-    border: 1px solid #ffeaa7;
-    border-radius: 0.25rem;
-    padding: 0.75rem;
-    color: #856404;
-}
+    .main-header {
+        font-size: 3rem;
+        color: #FF6B6B;
+        text-align: center;
+        margin-bottom: 2rem;
+        font-weight: bold;
+    }
+    .model-card {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+    }
+    .prediction-positive {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 1rem;
+        border-radius: 10px;
+        border: 1px solid #c3e6cb;
+        margin: 1rem 0;
+    }
+    .prediction-negative {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 1rem;
+        border-radius: 10px;
+        border: 1px solid #f5c6cb;
+        margin: 1rem 0;
+    }
+    .confidence-high { color: #28a745; font-weight: bold; }
+    .confidence-medium { color: #ffc107; font-weight: bold; }
+    .confidence-low { color: #dc3545; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("😊 Sentiment Analysis Tool")
-st.write("Analyze text sentiment: **Positive**, **Negative**, or **Neutral**")
-
-# Model file paths - adjust these to match your actual file names
-MODEL_FILES = {
-    "Multinomial Naive Bayes": "sentiment_analysis_pipeline.joblib",
-    "Logistic Regression": "logistic_regression_pipeline.joblib",
-    # "Random Forest": "random_forest_pipeline.joblib"  # adjust if different
-}
-
-# Check which models are available
-available_models = {}
-missing_models = []
-
-for model_name, file_path in MODEL_FILES.items():
-    if os.path.exists(file_path):
-        available_models[model_name] = file_path
-    else:
-        missing_models.append(f"{model_name} ({file_path})")
-
-# Display available models
-if available_models:
-    st.success(f"✅ Found {len(available_models)} models: {', '.join(available_models.keys())}")
-else:
-    st.error("❌ No model files found! Please make sure your .joblib files are in the same directory.")
-    st.stop()
-
-if missing_models:
-    st.warning(f"⚠️ Missing models: {', '.join(missing_models)}")
-
-# Sidebar for model selection
-st.sidebar.header("🎯 Model Selection")
-selected_model_name = st.sidebar.selectbox(
-    "Choose a sentiment analysis model:",
-    options=list(available_models.keys()),
-    help="Select which model to use for sentiment prediction"
-)
-
-# Load selected model
 @st.cache_resource
-def load_model(model_path):
-    """Load model with caching to improve performance"""
+def load_models():
+    """Load the trained models"""
+    models = {}
     try:
-        return joblib.load(model_path)
+        models['Multinomial Naive Bayes'] = joblib.load('sentiment_analysis_pipeline.joblib')
+        st.success("✅ Multinomial Naive Bayes model loaded successfully!")
+    except FileNotFoundError:
+        st.warning("⚠️ sentiment_analysis_pipeline.joblib not found")
+        models['Multinomial Naive Bayes'] = None
+    
+    try:
+        models['Logistic Regression'] = joblib.load('logistic_regression_pipeline.joblib')
+        st.success("✅ Logistic Regression model loaded successfully!")
+    except FileNotFoundError:
+        st.warning("⚠️ logistic_regression_pipeline.joblib not found")
+        models['Logistic Regression'] = None
+    
+    return models
+
+def get_confidence_level(prob):
+    """Determine confidence level based on probability"""
+    max_prob = max(prob)
+    if max_prob > 0.8:
+        return "High", "confidence-high"
+    elif max_prob > 0.6:
+        return "Medium", "confidence-medium"
+    else:
+        return "Low", "confidence-low"
+
+def predict_sentiment(text, model, model_name):
+    """Predict sentiment using the given model"""
+    try:
+        # Debug: Show the input text
+        st.write(f"**Debug - {model_name}:** Analyzing text: '{text[:100]}...' (length: {len(text)})")
+        
+        # Validate input
+        if not text or len(text.strip()) == 0:
+            st.warning(f"{model_name}: Empty text input!")
+            return None
+            
+        # Get prediction
+        prediction = model.predict([text])[0]
+        st.write(f"**Debug - {model_name}:** Raw prediction: {prediction}")
+        
+        # Get prediction probabilities if available
+        if hasattr(model, 'predict_proba'):
+            proba = model.predict_proba([text])[0]
+            st.write(f"**Debug - {model_name}:** Probabilities: {proba}")
+            confidence = max(proba)
+            neg_prob = proba[0]
+            pos_prob = proba[1]
+        else:
+            # For models without predict_proba, use decision function or default
+            if hasattr(model, 'decision_function'):
+                decision = model.decision_function([text])[0]
+                st.write(f"**Debug - {model_name}:** Decision function: {decision}")
+                # Convert decision function to pseudo-probability
+                confidence = min(abs(decision) / 2, 0.95)  # Cap at 95%
+                if decision > 0:
+                    pos_prob = 0.5 + confidence/2
+                    neg_prob = 0.5 - confidence/2
+                else:
+                    neg_prob = 0.5 + confidence/2
+                    pos_prob = 0.5 - confidence/2
+            else:
+                confidence = 0.75  # Default confidence
+                pos_prob = 0.75 if prediction == 1 else 0.25
+                neg_prob = 0.25 if prediction == 1 else 0.75
+        
+        sentiment = "Positive" if prediction == 1 else "Negative"
+        
+        return {
+            'sentiment': sentiment,
+            'confidence': confidence,
+            'positive_prob': pos_prob,
+            'negative_prob': neg_prob,
+            'model': model_name
+        }
     except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
+        st.error(f"Error with {model_name}: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
         return None
 
-# Load the selected model
-model_path = available_models[selected_model_name]
-model = load_model(model_path)
-
-if model is None:
-    st.error(f"Failed to load {selected_model_name}")
-    st.stop()
-
-st.sidebar.success(f"✅ {selected_model_name} loaded!")
-
-# Helper function to get sentiment emoji and color
-def get_sentiment_display(sentiment):
-    """Return emoji, color class, and description for sentiment"""
-    sentiment_lower = str(sentiment).lower()
+def create_confidence_chart(results):
+    """Create a confidence comparison chart"""
+    if not results:
+        return None
     
-    if 'positive' in sentiment_lower or sentiment == '1' or sentiment == 1:
-        return "😊", "sentiment-positive", "Positive", "#28a745"
-    elif 'negative' in sentiment_lower or sentiment == '-1' or sentiment == -1:
-        return "😞", "sentiment-negative", "Negative", "#dc3545"
-    elif 'neutral' in sentiment_lower or sentiment == '0' or sentiment == 0:
-        return "😐", "sentiment-neutral", "Neutral", "#ffc107"
-    else:
-        # Handle any other cases
-        return "🤔", "sentiment-neutral", str(sentiment), "#6c757d"
-
-# Main content area
-st.header(f"🔍 Analyzing with: {selected_model_name}")
-
-# Create tabs for different testing options
-tab1, tab2, tab3 = st.tabs(["💬 Text Analysis", "📄 Batch Analysis", "📊 Model Info"])
-
-# Tab 1: Single Text Testing
-with tab1:
-    st.subheader("Analyze Single Text")
+    models = [r['model'] for r in results if r is not None]
+    confidences = [r['confidence'] for r in results if r is not None]
+    sentiments = [r['sentiment'] for r in results if r is not None]
     
-    # Example texts for quick testing
-    st.markdown("**Quick Test Examples:**")
-    col1, col2, col3 = st.columns(3)
+    colors = ['#FF6B6B' if s == 'Negative' else '#4ECDC4' for s in sentiments]
+    
+    fig = go.Figure(data=[
+        go.Bar(x=models, y=confidences, marker_color=colors, text=[f"{c:.2%}" for c in confidences], textposition='auto')
+    ])
+    
+    fig.update_layout(
+        title="Model Confidence Comparison",
+        yaxis_title="Confidence Level",
+        xaxis_title="Models",
+        yaxis=dict(range=[0, 1]),
+        showlegend=False,
+        height=400
+    )
+    
+    return fig
+
+def create_probability_chart(result):
+    """Create a probability distribution chart for a single model"""
+    if not result:
+        return None
+    
+    labels = ['Negative', 'Positive']
+    values = [result['negative_prob'], result['positive_prob']]
+    colors = ['#FF6B6B', '#4ECDC4']
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=labels,
+        values=values,
+        hole=0.3,
+        marker_colors=colors,
+        textinfo='label+percent',
+        textfont_size=12
+    )])
+    
+    fig.update_layout(
+        title=f"{result['model']} - Probability Distribution",
+        showlegend=True,
+        height=300
+    )
+    
+    return fig
+
+# Main app
+def main():
+    # Header
+    st.markdown('<h1 class="main-header">🎬 Movie Review Sentiment Analyzer</h1>', unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Load models
+    with st.spinner("Loading AI models..."):
+        models = load_models()
+    
+    # Sidebar
+    st.sidebar.title("🔧 Model Settings")
+    
+    # Model selection
+    available_models = [name for name, model in models.items() if model is not None]
+    
+    if not available_models:
+        st.error("❌ No models found! Please ensure the .joblib files are in the same directory as this script.")
+        st.stop()
+    
+    selected_models = st.sidebar.multiselect(
+        "Select Models to Use:",
+        available_models,
+        default=available_models
+    )
+    
+    if not selected_models:
+        st.warning("Please select at least one model from the sidebar.")
+        return
+    
+    # Model information
+    st.sidebar.markdown("### 📊 Model Information")
+    model_info = {
+        'Multinomial Naive Bayes': {
+            'accuracy': '86.33%',
+            'description': 'Probabilistic classifier based on Bayes theorem'
+        },
+        'Logistic Regression': {
+            'accuracy': '89.25%',
+            'description': 'Linear model for binary classification'
+        }
+    }
+    
+    for model_name in selected_models:
+        if model_name in model_info:
+            with st.sidebar.expander(f"{model_name}"):
+                st.write(f"**Accuracy:** {model_info[model_name]['accuracy']}")
+                st.write(f"**Description:** {model_info[model_name]['description']}")
+    
+    # Main content area
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        if st.button("😊 Positive Example"):
-            st.session_state.example_text = "I absolutely love this product! It's amazing and works perfectly."
+        st.subheader("📝 Enter Your Movie Review")
+        
+        # Text input options
+        input_method = st.radio("Choose input method:", ["Type Review", "Use Sample Reviews"])
+        
+        if input_method == "Type Review":
+            user_input = st.text_area(
+                "Write your movie review here:",
+                placeholder="e.g., This movie was absolutely amazing! The plot was engaging and the acting was superb...",
+                height=150
+            )
+        else:
+            # Sample reviews
+            sample_reviews = [
+                "This movie was absolutely terrible. The plot made no sense and the acting was horrible.",
+                "Amazing film! Great story, excellent performances, and beautiful cinematography.",
+                "It was okay, not great but not terrible either. Pretty average movie.",
+                "I loved every minute of it! One of the best movies I've ever seen.",
+                "Boring and predictable. I fell asleep halfway through.",
+                "The movie was good, but the ending was disappointing.",
+                "Incredible action sequences and great character development!",
+                "Not worth the money. Poor script and bad direction."
+            ]
+            
+            selected_sample = st.selectbox("Choose a sample review:", [""] + sample_reviews)
+            user_input = st.text_area(
+                "Selected review (you can edit it):",
+                value=selected_sample,
+                height=100
+            )
     
     with col2:
-        if st.button("😞 Negative Example"):
-            st.session_state.example_text = "This is terrible. I hate it and it doesn't work at all."
-    
-    with col3:
-        if st.button("😐 Neutral Example"):
-            st.session_state.example_text = "The weather today is cloudy with a chance of rain."
-    
-    # Text input
-    default_text = st.session_state.get('example_text', '')
-    user_text = st.text_area(
-        "Enter text to analyze:",
-        value=default_text,
-        placeholder="Type or paste your text here... (e.g., 'I love this movie!' or 'This product is terrible')",
-        height=120,
-        help="Enter any text and the model will predict if it's positive, negative, or neutral"
-    )
-    
-    col1, col2 = st.columns([1, 4])
-    
-    with col1:
-        analyze_button = st.button("🔍 Analyze Sentiment", type="primary")
-    
-    if analyze_button and user_text.strip():
-        try:
-            # Make prediction
-            prediction = model.predict([user_text])[0]
-            emoji, css_class, sentiment_name, color = get_sentiment_display(prediction)
-            
-            # Display main result
-            st.markdown(f"""
-            <div class="{css_class}">
-                <h2 style="margin: 0;">{emoji} {sentiment_name}</h2>
-                <p style="margin: 0; margin-top: 10px;"><strong>Predicted Sentiment:</strong> {sentiment_name}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Get prediction probabilities if available
-            if hasattr(model, 'predict_proba'):
-                probabilities = model.predict_proba([user_text])[0]
-                classes = model.classes_ if hasattr(model, 'classes_') else range(len(probabilities))
-                
-                # Create probability dataframe with proper sentiment names
-                prob_data = []
-                for i, (class_label, prob) in enumerate(zip(classes, probabilities)):
-                    emoji, _, sentiment_name, color = get_sentiment_display(class_label)
-                    prob_data.append({
-                        'Sentiment': f"{emoji} {sentiment_name}",
-                        'Probability': prob,
-                        'Percentage': f"{prob*100:.1f}%",
-                        'Color': color
-                    })
-                
-                prob_df = pd.DataFrame(prob_data).sort_values('Probability', ascending=False)
-                
-                # Show confidence
-                max_prob = prob_df.iloc[0]['Probability']
-                confidence_level = "High" if max_prob > 0.7 else "Medium" if max_prob > 0.5 else "Low"
-                st.info(f"**Confidence Level:** {confidence_level} ({max_prob*100:.1f}%)")
-                
-                # Show probabilities table
-                st.write("**Detailed Probabilities:**")
-                display_df = prob_df[['Sentiment', 'Percentage']].reset_index(drop=True)
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
-                
-                # Visualization
-                fig, ax = plt.subplots(figsize=(10, 6))
-                bars = ax.barh(prob_df['Sentiment'], prob_df['Probability'])
-                
-                # Color bars according to sentiment
-                for i, (bar, color) in enumerate(zip(bars, prob_df['Color'])):
-                    bar.set_color(color)
-                    # Add percentage text
-                    width = bar.get_width()
-                    ax.text(width + 0.01, bar.get_y() + bar.get_height()/2, 
-                           f'{width*100:.1f}%', ha='left', va='center', fontweight='bold')
-                
-                ax.set_xlabel('Probability')
-                ax.set_title('Sentiment Analysis Results', fontsize=16, fontweight='bold')
-                ax.set_xlim(0, 1)
-                
-                # Add grid for better readability
-                ax.grid(axis='x', alpha=0.3)
-                
-                st.pyplot(fig)
-                plt.close()
-                
-            else:
-                st.success(f"**Prediction: {sentiment_name}**")
-                
-        except Exception as e:
-            st.error(f"Error analyzing sentiment: {str(e)}")
-            st.write("Please check that your model is trained for sentiment analysis.")
-    
-    elif analyze_button:
-        st.warning("Please enter some text to analyze.")
-
-# Tab 2: Batch Testing
-with tab2:
-    st.subheader("Batch Sentiment Analysis")
-    
-    # Sample data download
-    st.markdown("**Need sample data?** Download our example CSV:")
-    sample_data = pd.DataFrame({
-        'text': [
-            "I love this product so much!",
-            "This is the worst experience ever.",
-            "The weather is okay today.",
-            "Amazing service, highly recommended!",
-            "Not good, not bad, just average.",
-            "Terrible quality, very disappointed."
-        ],
-        'true_sentiment': ['positive', 'negative', 'neutral', 'positive', 'neutral', 'negative']
-    })
-    
-    sample_csv = sample_data.to_csv(index=False)
-    st.download_button(
-        label="📥 Download Sample CSV",
-        data=sample_csv,
-        file_name="sample_sentiment_data.csv",
-        mime='text/csv'
-    )
-    
-    # File upload
-    uploaded_file = st.file_uploader(
-        "Upload a CSV file with text data:",
-        type=['csv'],
-        help="CSV should have a column with text data for sentiment analysis"
-    )
-    
-    if uploaded_file is not None:
-        try:
-            # Read the CSV file
-            df = pd.read_csv(uploaded_file)
-            st.write("**Uploaded Data Preview:**")
-            st.dataframe(df.head(), use_container_width=True)
-            
-            # Let user select text column
-            text_column = st.selectbox(
-                "Select the text column:",
-                options=df.columns.tolist(),
-                help="Choose which column contains the text to analyze"
-            )
-            
-            # Optional: Select true labels column for evaluation
-            has_labels = st.checkbox("File contains true sentiment labels for evaluation")
-            label_column = None
-            
-            if has_labels:
-                label_column = st.selectbox(
-                    "Select the sentiment label column:",
-                    options=[col for col in df.columns.tolist() if col != text_column]
-                )
-            
-            if st.button("🚀 Analyze All Texts", type="primary"):
-                try:
-                    # Make predictions
-                    with st.spinner("Analyzing sentiments..."):
-                        predictions = model.predict(df[text_column])
-                        
-                        # Add predictions to dataframe
-                        result_df = df.copy()
-                        result_df['Predicted_Sentiment'] = predictions
-                        
-                        # Add sentiment names and emojis
-                        sentiment_info = [get_sentiment_display(pred) for pred in predictions]
-                        result_df['Sentiment_Display'] = [f"{emoji} {name}" for emoji, _, name, _ in sentiment_info]
-                        
-                        # Add probabilities if available
-                        if hasattr(model, 'predict_proba'):
-                            probabilities = model.predict_proba(df[text_column])
-                            classes = model.classes_ if hasattr(model, 'classes_') else range(len(probabilities[0]))
-                            
-                            # Add probability columns for each sentiment
-                            for i, class_label in enumerate(classes):
-                                _, _, sentiment_name, _ = get_sentiment_display(class_label)
-                                result_df[f'{sentiment_name}_Probability'] = probabilities[:, i]
-                            
-                            # Add confidence level
-                            max_probs = np.max(probabilities, axis=1)
-                            result_df['Confidence'] = ['High' if p > 0.7 else 'Medium' if p > 0.5 else 'Low' 
-                                                     for p in max_probs]
-                    
-                    st.success("✅ Sentiment analysis completed!")
-                    
-                    # Show results summary
-                    sentiment_counts = result_df['Predicted_Sentiment'].value_counts()
-                    
-                    col1, col2, col3 = st.columns(3)
-                    
-                    for sentiment in sentiment_counts.index:
-                        emoji, _, sentiment_name, color = get_sentiment_display(sentiment)
-                        count = sentiment_counts[sentiment]
-                        percentage = (count / len(result_df)) * 100
-                        
-                        if sentiment_name == "Positive":
-                            col1.metric(f"{emoji} Positive", f"{count} ({percentage:.1f}%)")
-                        elif sentiment_name == "Negative":
-                            col2.metric(f"{emoji} Negative", f"{count} ({percentage:.1f}%)")
-                        else:
-                            col3.metric(f"{emoji} Neutral", f"{count} ({percentage:.1f}%)")
-                    
-                    # Show detailed results
-                    st.write("**Detailed Results:**")
-                    st.dataframe(result_df, use_container_width=True)
-                    
-                    # Download results
-                    csv = result_df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download Results as CSV",
-                        data=csv,
-                        file_name=f"sentiment_analysis_{selected_model_name.lower().replace(' ', '_')}.csv",
-                        mime='text/csv'
-                    )
-                    
-                    # Visualization of results
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-                    
-                    # Sentiment distribution pie chart
-                    sentiment_display_counts = result_df['Sentiment_Display'].value_counts()
-                    colors = []
-                    for sentiment in sentiment_display_counts.index:
-                        if "Positive" in sentiment:
-                            colors.append("#28a745")
-                        elif "Negative" in sentiment:
-                            colors.append("#dc3545")
-                        else:
-                            colors.append("#ffc107")
-                    
-                    ax1.pie(sentiment_display_counts.values, labels=sentiment_display_counts.index, 
-                           autopct='%1.1f%%', colors=colors, startangle=90)
-                    ax1.set_title('Sentiment Distribution')
-                    
-                    # Confidence distribution
-                    if 'Confidence' in result_df.columns:
-                        confidence_counts = result_df['Confidence'].value_counts()
-                        bars = ax2.bar(confidence_counts.index, confidence_counts.values, 
-                                      color=['#28a745', '#ffc107', '#dc3545'])
-                        ax2.set_title('Prediction Confidence Distribution')
-                        ax2.set_ylabel('Count')
-                        
-                        # Add value labels on bars
-                        for bar in bars:
-                            height = bar.get_height()
-                            ax2.text(bar.get_x() + bar.get_width()/2., height,
-                                   f'{int(height)}', ha='center', va='bottom')
-                    
-                    st.pyplot(fig)
-                    plt.close()
-                    
-                    # Evaluation metrics if labels are provided
-                    if has_labels and label_column:
-                        st.write("**Model Performance Evaluation:**")
-                        
-                        accuracy = accuracy_score(df[label_column], predictions)
-                        st.metric("Overall Accuracy", f"{accuracy:.4f}")
-                        
-                        # Classification report
-                        report = classification_report(df[label_column], predictions, output_dict=True)
-                        report_df = pd.DataFrame(report).transpose()
-                        st.write("**Detailed Classification Report:**")
-                        st.dataframe(report_df, use_container_width=True)
-                        
-                        # Confusion Matrix
-                        cm = confusion_matrix(df[label_column], predictions)
-                        fig, ax = plt.subplots(figsize=(8, 6))
-                        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-                        ax.set_title('Confusion Matrix')
-                        ax.set_ylabel('True Sentiment')
-                        ax.set_xlabel('Predicted Sentiment')
-                        st.pyplot(fig)
-                        plt.close()
-                    
-                except Exception as e:
-                    st.error(f"Error during batch analysis: {str(e)}")
-                    
-        except Exception as e:
-            st.error(f"Error reading file: {str(e)}")
-    else:
-        st.info("📤 Upload a CSV file to start batch sentiment analysis. Make sure it has a column with text data.")
-
-# Tab 3: Model Information
-with tab3:
-    st.subheader("📊 Model Information")
-    
-    try:
-        # Display model type
-        if hasattr(model, 'named_steps'):
-            # It's a pipeline
-            st.write("**🔧 Model Type:** Machine Learning Pipeline")
-            st.write("**📋 Pipeline Components:**")
-            for name, step in model.named_steps.items():
-                st.write(f"- **{name}**: {type(step).__name__}")
-                
-            # Get the classifier
-            if 'classifier' in model.named_steps:
-                classifier = model.named_steps['classifier']
-                st.write(f"**🎯 Main Classifier:** {type(classifier).__name__}")
-        else:
-            st.write(f"**🔧 Model Type:** {type(model).__name__}")
-            
-        # Show classes if available
-        if hasattr(model, 'classes_'):
-            st.write("**🏷️ Sentiment Classes:**")
-            classes_info = []
-            for class_label in model.classes_:
-                emoji, _, sentiment_name, _ = get_sentiment_display(class_label)
-                classes_info.append({
-                    'Class Label': str(class_label),
-                    'Sentiment': f"{emoji} {sentiment_name}"
-                })
-            classes_df = pd.DataFrame(classes_info)
-            st.dataframe(classes_df, use_container_width=True, hide_index=True)
+        st.subheader("⚡ Quick Actions")
         
-        # Feature information if it's a pipeline with vectorizer
-        if hasattr(model, 'named_steps'):
-            if 'tfidf' in model.named_steps:
-                vectorizer = model.named_steps['tfidf']
-                st.write("**📝 Text Processing Information:**")
+        # Batch analysis
+        if st.button("🔄 Analyze Multiple Reviews", help="Analyze several reviews at once"):
+            st.session_state.show_batch = True
+        
+        # Clear button
+        if st.button("🗑️ Clear All", help="Clear all inputs and results"):
+            st.session_state.clear()
+            st.rerun()
+    
+    # Analysis button
+    if st.button("🚀 Analyze Sentiment", type="primary", use_container_width=True):
+        if user_input.strip():
+            # Perform analysis
+            with st.spinner("Analyzing sentiment..."):
+                results = []
                 
-                col1, col2 = st.columns(2)
+                # Create columns for results
+                cols = st.columns(len(selected_models))
                 
-                with col1:
-                    if hasattr(vectorizer, 'vocabulary_'):
-                        vocab_size = len(vectorizer.vocabulary_)
-                        st.metric("Vocabulary Size", f"{vocab_size:,}")
-                    
-                    if hasattr(vectorizer, 'max_features'):
-                        max_feat = vectorizer.max_features or "No Limit"
-                        st.metric("Max Features", max_feat)
+                for i, model_name in enumerate(selected_models):
+                    with cols[i]:
+                        model = models[model_name]
+                        result = predict_sentiment(user_input, model, model_name)
+                        if result:
+                            results.append(result)
+                            
+                            # Display result card
+                            sentiment = result['sentiment']
+                            confidence = result['confidence']
+                            confidence_level, confidence_class = get_confidence_level([result['negative_prob'], result['positive_prob']])
+                            
+                            if sentiment == "Positive":
+                                st.markdown(f"""
+                                <div class="prediction-positive">
+                                    <h3>🎉 {model_name}</h3>
+                                    <h2>😊 Positive</h2>
+                                    <p><strong>Confidence:</strong> <span class="{confidence_class}">{confidence:.1%} ({confidence_level})</span></p>
+                                    <p><strong>Positive:</strong> {result['positive_prob']:.1%} | <strong>Negative:</strong> {result['negative_prob']:.1%}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"""
+                                <div class="prediction-negative">
+                                    <h3>📊 {model_name}</h3>
+                                    <h2>😞 Negative</h2>
+                                    <p><strong>Confidence:</strong> <span class="{confidence_class}">{confidence:.1%} ({confidence_level})</span></p>
+                                    <p><strong>Positive:</strong> {result['positive_prob']:.1%} | <strong>Negative:</strong> {result['negative_prob']:.1%}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
                 
-                with col2:
-                    if hasattr(vectorizer, 'ngram_range'):
-                        ngram_range = vectorizer.ngram_range
-                        st.metric("N-gram Range", f"{ngram_range[0]} to {ngram_range[1]}")
+                # Comparison charts
+                if len(results) > 1:
+                    st.markdown("---")
+                    st.subheader("📈 Model Comparison")
                     
-                    if hasattr(vectorizer, 'min_df'):
-                        st.metric("Min Document Frequency", vectorizer.min_df)
+                    # Confidence comparison
+                    conf_chart = create_confidence_chart(results)
+                    if conf_chart:
+                        st.plotly_chart(conf_chart, use_container_width=True)
+                
+                # Individual probability charts
+                if results:
+                    st.markdown("---")
+                    st.subheader("🎯 Detailed Analysis")
                     
-    except Exception as e:
-        st.error(f"Error displaying model information: {str(e)}")
+                    chart_cols = st.columns(len(results))
+                    for i, result in enumerate(results):
+                        with chart_cols[i]:
+                            prob_chart = create_probability_chart(result)
+                            if prob_chart:
+                                st.plotly_chart(prob_chart, use_container_width=True)
+        else:
+            st.warning("Please enter a movie review to analyze!")
+    
+    # Batch analysis section
+    if st.session_state.get('show_batch', False):
+        st.markdown("---")
+        st.subheader("📊 Batch Analysis")
+        
+        batch_reviews = st.text_area(
+            "Enter multiple reviews (one per line):",
+            placeholder="Review 1\nReview 2\nReview 3...",
+            height=200
+        )
+        
+        if st.button("Analyze Batch"):
+            if batch_reviews.strip():
+                reviews_list = [review.strip() for review in batch_reviews.split('\n') if review.strip()]
+                
+                if reviews_list:
+                    batch_results = []
+                    progress_bar = st.progress(0)
+                    
+                    for i, review in enumerate(reviews_list):
+                        review_results = {}
+                        for model_name in selected_models:
+                            model = models[model_name]
+                            result = predict_sentiment(review, model, model_name)
+                            if result:
+                                review_results[model_name] = result['sentiment']
+                        
+                        batch_results.append({
+                            'Review': review[:100] + '...' if len(review) > 100 else review,
+                            **review_results
+                        })
+                        
+                        progress_bar.progress((i + 1) / len(reviews_list))
+                    
+                    # Display batch results
+                    df = pd.DataFrame(batch_results)
+                    st.dataframe(df, use_container_width=True)
+                    
+                    # Summary statistics
+                    summary_data = []
+                    for model_name in selected_models:
+                        if model_name in df.columns:
+                            positive_count = (df[model_name] == 'Positive').sum()
+                            negative_count = (df[model_name] == 'Negative').sum()
+                            summary_data.append({
+                                'Model': model_name,
+                                'Positive': positive_count,
+                                'Negative': negative_count,
+                                'Total': len(df)
+                            })
+                    
+                    if summary_data:
+                        st.subheader("📋 Summary")
+                        summary_df = pd.DataFrame(summary_data)
+                        st.dataframe(summary_df, use_container_width=True)
+    
 
-# Footer
-st.markdown("---")
-st.markdown("### 💡 Tips for Better Results:")
-st.markdown("""
-- **Clear text**: Remove unnecessary characters and formatting
-- **Context matters**: Longer texts usually give better predictions
-- **Mixed sentiments**: The model predicts the overall sentiment of the entire text
-- **Domain specifics**: Models work best on text similar to their training data
-""")
-
-st.markdown("**📁 Note:** Make sure your .joblib model files are in the same directory as this app.")
-
-# Instructions for running
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🚀 How to Run")
-st.sidebar.markdown("""
-1. Save this code as `app.py`
-2. Put your .joblib files in the same folder
-3. Install required packages:
-   ```
-   pip install streamlit pandas scikit-learn seaborn matplotlib
-   ```
-4. Run: `streamlit run app.py`
-5. Open in browser and start analyzing!
-""")
+if __name__ == "__main__":
+    main()

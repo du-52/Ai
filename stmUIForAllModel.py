@@ -70,6 +70,13 @@ def load_models():
     except FileNotFoundError:
         st.warning("⚠️ logistic_regression_pipeline.joblib not found")
         models['Logistic Regression'] = None
+
+    try:
+        models['Support Vector Machine'] = joblib.load('linear_svm_pipeline.joblib')
+        st.success("✅ Support Vector Machine model loaded successfully!")
+    except FileNotFoundError:
+        st.warning("⚠️ linear_svm_pipeline.joblib not found")
+        models['Support Vector Machine'] = None
     
     return models
 

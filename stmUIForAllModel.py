@@ -237,6 +237,10 @@ def main():
         'Logistic Regression': {
             'accuracy': '89.25%',
             'description': 'Linear model for binary classification'
+        },
+        'Support Vector Machine': {
+            'accuracy': '89.40%',
+            'description': 'Maximum-margin model for classification'
         }
     }
     

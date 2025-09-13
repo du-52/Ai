@@ -1,0 +1,166 @@
+# Loading the dataset from Stanford's original source
+import os
+import pandas as pd
+import urllib.request
+import tarfile
+from pathlib import Path
+
+# Download and extract the dataset
+url = "http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz"
+dataset_path = "aclImdb_v1.tar.gz"
+extract_path = "aclImdb"
+
+# Download if not already present
+if not os.path.exists(dataset_path):
+    print("Downloading IMDB dataset...")
+    urllib.request.urlretrieve(url, dataset_path)
+    print("Download completed!")
+
+# Extract if not already extracted
+if not os.path.exists(extract_path):
+    print("Extracting dataset...")
+    with tarfile.open(dataset_path, 'r:gz') as tar:
+        tar.extractall()
+    print("Extraction completed!")
+
+# Function to load text files from directory
+def load_texts_from_dir(directory_path):
+    texts = []
+    labels = []
+    
+    # Load positive reviews
+    pos_path = Path(directory_path) / "pos"
+    for file_path in pos_path.glob("*.txt"):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            texts.append(f.read())
+            labels.append(1)  # positive = 1
+    
+    # Load negative reviews
+    neg_path = Path(directory_path) / "neg"
+    for file_path in neg_path.glob("*.txt"):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            texts.append(f.read())
+            labels.append(0)  # negative = 0
+    
+    return texts, labels
+
+# Load training data
+print("Loading training data...")
+train_texts, train_labels = load_texts_from_dir("aclImdb/train")
+df_train = pd.DataFrame({"review": train_texts, "sentiment": train_labels})
+
+# Load test data
+print("Loading test data...")
+test_texts, test_labels = load_texts_from_dir("aclImdb/test")
+df_test = pd.DataFrame({"review": test_texts, "sentiment": test_labels})
+
+# 0 = negative, 1 = positive
+print(f"Training set shape: {df_train.shape}")
+print(f"Test set shape: {df_test.shape}")
+print(f"Training set sentiment distribution:\n{df_train['sentiment'].value_counts()}")
+print(f"Test set sentiment distribution:\n{df_test['sentiment'].value_counts()}")
+
+print(df_train.head())
+
+# Splitting into features and label
+X_train = df_train['review']
+y_train = df_train['sentiment']
+X_test = df_test['review']
+y_test = df_test['sentiment']
+
+# Pre-Processing for Classical ML
+import re
+
+def basic_clean(text):
+    # 1. Remove HTML tags
+    text = re.sub(r'<.*?>', ' ', text)
+
+    # 2. Remove URLs
+    text = re.sub(r'http\S+|www\S+', ' ', text)
+
+    # 3. Remove special characters (keep letters, numbers, punctuation)
+    text = re.sub(r"[^a-zA-Z0-9\s.,!?']", ' ', text)
+
+    # 4. Normalize whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+X_train_cleaned = X_train.apply(basic_clean)
+X_test_cleaned = X_test.apply(basic_clean)
+
+# **Only Classical ML algorithms need these** VV
+
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer, WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+
+# Download resources (run once)
+nltk.download("punkt")
+nltk.download("stopwords")
+nltk.download("wordnet")
+nltk.download("punkt_tab")
+
+stop_words = set(stopwords.words("english"))
+
+# Words to keep in stop words
+to_keep = ["no", "nor", "never", "not", "n't"]
+for neg in to_keep:
+    stop_words.discard(neg)
+
+stemmer = PorterStemmer()
+lemmatizer = WordNetLemmatizer()
+
+# THE FUNCTION BELOW IS TO BE USED ONLY IF YOU ARE USING CLASSICAL ML
+def classical_preprocess(text, use_stemming=True):
+    # 1. Tokenization
+    tokens = word_tokenize(text)
+
+    # 2. Lowercasing
+    tokens = [t.lower() for t in tokens]
+
+    # 3. Stopword removal (keep "not")
+    tokens = [t for t in tokens if t not in stop_words]
+
+    # 4. Negation handling: "not good" → "not_good"
+    processed_tokens = []
+    skip = False
+    for i in range(len(tokens)):
+        if skip:
+            skip = False
+            continue
+        if tokens[i] in to_keep and i+1 < len(tokens):
+            processed_tokens.append("not_" + tokens[i+1])
+            skip = True
+        else:
+            processed_tokens.append(tokens[i])
+
+    # 5. Stemming or Lemmatization
+    if use_stemming:
+        processed_tokens = [stemmer.stem(t) for t in processed_tokens]
+    else:
+        processed_tokens = [lemmatizer.lemmatize(t) for t in processed_tokens]
+
+    # Join back into a single string (for TF-IDF)
+    return " ".join(processed_tokens)
+
+# X_train_preprocessed = X_train_cleaned.apply(lambda x: classical_preprocess(x, use_stemming=True))
+# X_test_preprocessed = X_test_cleaned.apply(lambda x: classical_preprocess(x, use_stemming=True))
+
+# Vectorization TF-IDF / Feature Engineering
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# --- TF-IDF Vectorization Code ---
+print("--- Starting TF-IDF Vectorization ---")
+vectorizer = TfidfVectorizer(
+    max_features=10000,
+    ngram_range=(1,2),   # unigrams + bigrams
+    min_df=2             # ignore words that appear only once
+)
+# X_train_tfidf = vectorizer.fit_transform(X_train_preprocessed)
+# X_test_tfidf = vectorizer.transform(X_test_preprocessed)
+X_train_tfidf = vectorizer.fit_transform(X_train)
+X_test_tfidf = vectorizer.transform(X_test)
+
+print("Shape of X_train_tfidf:", X_train_tfidf.shape)
+print("Shape of X_test_tfidf:", X_test_tfidf.shape)

@@ -1,0 +1,177 @@
+from sklearn.linear_model import LogisticRegression
+from scipy.stats import uniform, loguniform
+import numpy as np
+
+print("\n" + "="*50)
+print("LOGISTIC REGRESSION MODEL")
+print("="*50)
+
+# define Hyperparameter Search Space
+lr_params = {
+    'C': loguniform(0.01, 100),  # The inverse of the regularization strength, using a log-uniform distribution
+    'penalty': ['l1', 'l2', 'elasticnet'],  # Type of regularization
+    'solver': ['liblinear', 'saga'],  # optimized algorithm
+    'l1_ratio': uniform(0, 1),  # L1 ratio for ElasticNet (only used when penalty='elasticnet').
+    'max_iter': [1000]  # max interation num
+}
+
+# create Logistic Regression model
+lr_model = LogisticRegression(random_state=69, n_jobs=-1)
+  #random_state = random seed, it can ensure everytime run the code has the same result
+  #n_jobs=-1 :Control the number of CPU cores used for parallel computing benefit: use to speed up training
+
+# random searching
+lr_random_search = RandomizedSearchCV(
+    lr_model, #Model to optimize
+    lr_params,  #Parameter search space
+    n_iter=100,  # Try 100 different parameter combinations， since lr parameter space is large
+    cv=5, # 5-fold cross-validation
+    scoring='accuracy', # use accuracy to evaluate the model
+    n_jobs=-1, # parallelize the computation using all CPU cores
+    random_state=69,
+    verbose=1  # show progress bar
+)
+
+print("Starting Randomized Search on Logistic Regression...")
+lr_random_search.fit(X_train_tfidf, y_train)
+print("Logistic Regression Random Search Completed")
+
+# 获取最佳参数和模型
+print("\nBest Parameters for Logistic Regression:", lr_random_search.best_params_)
+best_lr = lr_random_search.best_estimator_
+
+# 在测试集上评估
+lr_y_pred = best_lr.predict(X_test_tfidf)
+lr_accuracy = (lr_y_pred == y_test).mean()
+print(f"Logistic Regression Accuracy: {lr_accuracy:.5f}")
+
+# =====================================
+# 模型比较
+# =====================================
+
+print("\n" + "="*50)
+print("MODEL COMPARISON")
+print("="*50)
+
+# 比较两个模型的性能
+mnb_accuracy = (best_mnb.predict(X_test_tfidf) == y_test).mean()
+
+print(f"Multinomial Naive Bayes Accuracy: {mnb_accuracy:.5f}")
+print(f"Logistic Regression Accuracy:     {lr_accuracy:.5f}")
+
+# 确定最佳模型
+if lr_accuracy > mnb_accuracy:
+    best_model = best_lr
+    best_model_name = "Logistic Regression"
+    best_accuracy = lr_accuracy
+else:
+    best_model = best_mnb
+    best_model_name = "Multinomial Naive Bayes"
+    best_accuracy = mnb_accuracy
+
+print(f"\nBest Model: {best_model_name} with accuracy: {best_accuracy:.5f}")
+
+# =====================================
+# 创建改进的Pipeline（包含最佳模型）
+# =====================================
+
+# 创建Logistic Regression Pipeline
+lr_pipe = Pipeline([
+    ('tfidf', TfidfVectorizer(max_features=10000, ngram_range=(1,2), min_df=2)),
+    ('classifier', LogisticRegression(
+        C=lr_random_search.best_params_['C'],
+        penalty=lr_random_search.best_params_['penalty'],
+        solver=lr_random_search.best_params_['solver'],
+        l1_ratio=lr_random_search.best_params_.get('l1_ratio', None),
+        max_iter=lr_random_search.best_params_['max_iter'],
+        random_state=69,
+        n_jobs=-1
+    ))
+])
+
+print(f"\nFitting {best_model_name} Pipeline...")
+if best_model_name == "Logistic Regression":
+    lr_pipe.fit(X_train, y_train)
+    final_pipeline = lr_pipe
+    joblib.dump(lr_pipe, 'logistic_regression_pipeline.joblib')
+    print("Logistic Regression Pipeline saved as 'logistic_regression_pipeline.joblib'")
+else:
+    final_pipeline = pipe  # 使用之前的MNB pipeline
+
+# =====================================
+# 测试最佳模型
+# =====================================
+
+print(f"\n" + "="*50)
+print(f"TESTING BEST MODEL: {best_model_name}")
+print("="*50)
+
+test_reviews = [
+    # Negative
+    "The plot was boring and predictable.",
+    "I really did not enjoy this movie at all.",
+    "The acting was terrible, no chemistry between the cast.",
+    "I can't believe I wasted two hours on this.",
+
+    # Positive
+    "Absolutely loved it, the story was touching and well-paced.",
+    "Great performances and beautiful cinematography.",
+    "This film was amazing, one of the best I've seen in years.",
+    "I enjoyed every single moment of it!",
+
+    # Tricky / Mixed
+    "The movie was good, but not great.",
+    "It's not bad, actually pretty decent.",
+    "Never boring, always kept me interested.",
+    "The story was okay, but not the acting.",
+
+    # Sarcastic / Ambiguous
+    "Yeah, this was the greatest movie ever... not!",
+    "Well, at least the popcorn was good.",
+    "I expected better, but it could've been worse."
+]
+
+for review in test_reviews:
+    pred = final_pipeline.predict([review])
+    # 获取预测概率
+    if hasattr(final_pipeline, 'predict_proba'):
+        proba = final_pipeline.predict_proba([review])[0]
+        confidence = max(proba)
+        print(f"Review: {review}")
+        print(f"Prediction: {'Negative' if pred[0] == 0 else 'Positive'} (Confidence: {confidence:.3f})")
+        print()
+    else:
+        print(f"Review: {review}")
+        print(f"Prediction: {'Negative' if pred[0] == 0 else 'Positive'}")
+        print()
+
+# =====================================
+# 额外功能：特征重要性分析（仅适用于Logistic Regression）
+# =====================================
+
+if best_model_name == "Logistic Regression":
+    print("="*50)
+    print("FEATURE IMPORTANCE ANALYSIS")
+    print("="*50)
+
+    # 获取特征名称
+    feature_names = final_pipeline.named_steps['tfidf'].get_feature_names_out()
+
+    # 获取系数（权重）
+    coefficients = final_pipeline.named_steps['classifier'].coef_[0]
+
+    # 找出最重要的正面和负面特征
+    feature_importance = list(zip(feature_names, coefficients))
+
+    # 按系数排序
+    feature_importance.sort(key=lambda x: x[1])
+
+    print("\nTop 10 features indicating NEGATIVE sentiment:")
+    for feature, coef in feature_importance[:10]:
+        print(f"  {feature}: {coef:.4f}")
+
+    print("\nTop 10 features indicating POSITIVE sentiment:")
+    for feature, coef in feature_importance[-10:]:
+        print(f"  {feature}: {coef:.4f}")
+
+

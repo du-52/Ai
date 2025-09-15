@@ -46,9 +46,10 @@ st.markdown("""
         border: 1px solid #f5c6cb;
         margin: 1rem 0;
     }
-    .confidence-high { color: #28a745; font-weight: bold; }
-    .confidence-medium { color: #ffc107; font-weight: bold; }
-    .confidence-low { color: #dc3545; font-weight: bold; }
+    .confidence-level { padding: 5px 10px; border-radius: 10px; color: #fffd; }
+    .confidence-high { background-color: #155724; font-weight: bold; }
+    .confidence-medium { background-color: #d97822; font-weight: bold; }
+    .confidence-low { background-color: #a60000; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -323,7 +324,7 @@ def main():
                                 <div class="prediction-positive">
                                     <h3>{model_name}</h3>
                                     <h2>Positive</h2>
-                                    <p><strong>Confidence:</strong> <span class="{confidence_class}">{confidence:.1%} ({confidence_level})</span></p>
+                                    <p><strong>Confidence:</strong> <span class="{confidence_class} confidence-level">{confidence:.1%} ({confidence_level})</span></p>
                                     <p><strong>Positive:</strong> {result['positive_prob']:.1%} | <strong>Negative:</strong> {result['negative_prob']:.1%}</p>
                                 </div>
                                 """, unsafe_allow_html=True)
@@ -332,7 +333,7 @@ def main():
                                 <div class="prediction-negative">
                                     <h3>{model_name}</h3>
                                     <h2>Negative</h2>
-                                    <p><strong>Confidence:</strong> <span class="{confidence_class}">{confidence:.1%} ({confidence_level})</span></p>
+                                    <p><strong>Confidence:</strong> <span class="{confidence_class} confidence-level">{confidence:.1%} ({confidence_level})</span></p>
                                     <p><strong>Positive:</strong> {result['positive_prob']:.1%} | <strong>Negative:</strong> {result['negative_prob']:.1%}</p>
                                 </div>
                                 """, unsafe_allow_html=True)

@@ -10,7 +10,6 @@ import time
 # Page configuration
 st.set_page_config(
     page_title="Movie Review Sentiment Analyzer",
-    page_icon="🎬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -59,23 +58,23 @@ def load_models():
     models = {}
     try:
         models['Multinomial Naive Bayes'] = joblib.load('sentiment_analysis_pipeline.joblib')
-        st.success("✅ Multinomial Naive Bayes model loaded successfully!")
+        st.success("Multinomial Naive Bayes model loaded successfully!")
     except FileNotFoundError:
-        st.warning("⚠️ sentiment_analysis_pipeline.joblib not found")
+        st.warning("sentiment_analysis_pipeline.joblib not found")
         models['Multinomial Naive Bayes'] = None
     
     try:
         models['Logistic Regression'] = joblib.load('logistic_regression_pipeline.joblib')
-        st.success("✅ Logistic Regression model loaded successfully!")
+        st.success("Logistic Regression model loaded successfully!")
     except FileNotFoundError:
-        st.warning("⚠️ logistic_regression_pipeline.joblib not found")
+        st.warning("logistic_regression_pipeline.joblib not found")
         models['Logistic Regression'] = None
 
     try:
         models['Support Vector Machine'] = joblib.load('linear_svm_pipeline.joblib')
-        st.success("✅ Support Vector Machine model loaded successfully!")
+        st.success("Support Vector Machine model loaded successfully!")
     except FileNotFoundError:
-        st.warning("⚠️ linear_svm_pipeline.joblib not found")
+        st.warning("linear_svm_pipeline.joblib not found")
         models['Support Vector Machine'] = None
     
     return models
@@ -147,15 +146,15 @@ def predict_sentiment(text, model, model_name):
 
 def create_confidence_chart(results):
     """Create a confidence comparison chart"""
-    if not results:
+    if not results: #ifno result data return none
         return None
-    
+    #data retrieve
     models = [r['model'] for r in results if r is not None]
     confidences = [r['confidence'] for r in results if r is not None]
     sentiments = [r['sentiment'] for r in results if r is not None]
     
     colors = ['#FF6B6B' if s == 'Negative' else '#4ECDC4' for s in sentiments]
-    
+    #create chart:x = models name, y= confidence value, marker color is according to the sentiment result, label is to show the confident 
     fig = go.Figure(data=[
         go.Bar(x=models, y=confidences, marker_color=colors, text=[f"{c:.2%}" for c in confidences], textposition='auto')
     ])
@@ -164,9 +163,9 @@ def create_confidence_chart(results):
         title="Model Confidence Comparison",
         yaxis_title="Confidence Level",
         xaxis_title="Models",
-        yaxis=dict(range=[0, 1]),
-        showlegend=False,
-        height=400
+        yaxis=dict(range=[0, 1]),   #range of y-axis
+        showlegend=False,   #Do not display legend 
+        height=400  #height of the chart
     )
     
     return fig
@@ -200,7 +199,7 @@ def create_probability_chart(result):
 # Main app
 def main():
     # Header
-    st.markdown('<h1 class="main-header">🎬 Movie Review Sentiment Analyzer</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">Movie Review Sentiment Analyzer</h1>', unsafe_allow_html=True)
     st.markdown("---")
     
     # Load models
@@ -208,13 +207,13 @@ def main():
         models = load_models()
     
     # Sidebar
-    st.sidebar.title("🔧 Model Settings")
+    st.sidebar.title("Model Settings")
     
     # Model selection
     available_models = [name for name, model in models.items() if model is not None]
     
     if not available_models:
-        st.error("❌ No models found! Please ensure the .joblib files are in the same directory as this script.")
+        st.error("No models found! Please ensure the .joblib files are in the same directory as this script.")
         st.stop()
     
     selected_models = st.sidebar.multiselect(
@@ -228,7 +227,7 @@ def main():
         return
     
     # Model information
-    st.sidebar.markdown("### 📊 Model Information")
+    st.sidebar.markdown("### Model Information")
     model_info = {
         'Multinomial Naive Bayes': {
             'accuracy': '86.33%',
@@ -254,7 +253,7 @@ def main():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.subheader("📝 Enter Your Movie Review")
+        st.subheader("Enter Your Movie Review")
         
         # Text input options
         input_method = st.radio("Choose input method:", ["Type Review", "Use Sample Reviews"])
@@ -286,22 +285,22 @@ def main():
             )
     
     with col2:
-        st.subheader("⚡ Quick Actions")
+        st.subheader("Quick Actions")
         
         # Batch analysis
-        if st.button("🔄 Analyze Multiple Reviews", help="Analyze several reviews at once"):
+        if st.button("Analyze Multiple Reviews", help="Analyze several reviews at once"):
             st.session_state.show_batch = True
         
         # Clear button
-        if st.button("🗑️ Clear All", help="Clear all inputs and results"):
+        if st.button("Clear All", help="Clear all inputs and results"):
             st.session_state.clear()
             st.rerun()
     
     # Analysis button
-    if st.button("🚀 Analyze Sentiment", type="primary", use_container_width=True):
+    if st.button("Analyze Sentiment", type="primary", use_container_width=True):
         if user_input.strip():
             # Perform analysis
-            with st.spinner("Analyzing sentiment..."):
+            with st.spinner("Analyzing sentiment..."): #spinner is the loader indicator
                 results = []
                 
                 # Create columns for results
@@ -322,8 +321,8 @@ def main():
                             if sentiment == "Positive":
                                 st.markdown(f"""
                                 <div class="prediction-positive">
-                                    <h3>🎉 {model_name}</h3>
-                                    <h2>😊 Positive</h2>
+                                    <h3>{model_name}</h3>
+                                    <h2>Positive</h2>
                                     <p><strong>Confidence:</strong> <span class="{confidence_class}">{confidence:.1%} ({confidence_level})</span></p>
                                     <p><strong>Positive:</strong> {result['positive_prob']:.1%} | <strong>Negative:</strong> {result['negative_prob']:.1%}</p>
                                 </div>
@@ -331,8 +330,8 @@ def main():
                             else:
                                 st.markdown(f"""
                                 <div class="prediction-negative">
-                                    <h3>📊 {model_name}</h3>
-                                    <h2>😞 Negative</h2>
+                                    <h3>{model_name}</h3>
+                                    <h2>Negative</h2>
                                     <p><strong>Confidence:</strong> <span class="{confidence_class}">{confidence:.1%} ({confidence_level})</span></p>
                                     <p><strong>Positive:</strong> {result['positive_prob']:.1%} | <strong>Negative:</strong> {result['negative_prob']:.1%}</p>
                                 </div>
@@ -341,7 +340,7 @@ def main():
                 # Comparison charts
                 if len(results) > 1:
                     st.markdown("---")
-                    st.subheader("📈 Model Comparison")
+                    st.subheader("Model Comparison")
                     
                     # Confidence comparison
                     conf_chart = create_confidence_chart(results)
@@ -351,7 +350,7 @@ def main():
                 # Individual probability charts
                 if results:
                     st.markdown("---")
-                    st.subheader("🎯 Detailed Analysis")
+                    st.subheader("Detailed Analysis")
                     
                     chart_cols = st.columns(len(results))
                     for i, result in enumerate(results):
@@ -365,7 +364,7 @@ def main():
     # Batch analysis section
     if st.session_state.get('show_batch', False):
         st.markdown("---")
-        st.subheader("📊 Batch Analysis")
+        st.subheader("Batch Analysis")
         
         batch_reviews = st.text_area(
             "Enter multiple reviews (one per line):",
@@ -373,14 +372,14 @@ def main():
             height=200
         )
         
-        if st.button("Analyze Batch"):
-            if batch_reviews.strip():
+        if st.button("Analyze Batch"):  # the trigger of the user press the button
+            if batch_reviews.strip():   #process the input
                 reviews_list = [review.strip() for review in batch_reviews.split('\n') if review.strip()]
                 
                 if reviews_list:
                     batch_results = []
                     progress_bar = st.progress(0)
-                    
+                    #anlaysis all the review 
                     for i, review in enumerate(reviews_list):
                         review_results = {}
                         for model_name in selected_models:
@@ -397,7 +396,7 @@ def main():
                         progress_bar.progress((i + 1) / len(reviews_list))
                     
                     # Display batch results
-                    df = pd.DataFrame(batch_results)
+                    df = pd.DataFrame(batch_results)    #convert the result into dataframe format , easy for data analysis & change the data into 2d
                     st.dataframe(df, use_container_width=True)
                     
                     # Summary statistics
@@ -414,7 +413,7 @@ def main():
                             })
                     
                     if summary_data:
-                        st.subheader("📋 Summary")
+                        st.subheader("Summary")
                         summary_df = pd.DataFrame(summary_data)
                         st.dataframe(summary_df, use_container_width=True)
     

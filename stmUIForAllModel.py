@@ -94,7 +94,7 @@ def predict_sentiment(text, model, model_name):
     """Predict sentiment using the given model"""
     try:
         # Debug: Show the input text
-        st.write(f"**Debug - {model_name}:** Analyzing text: '{text[:100]}...' (length: {len(text)})")
+        debug_info = f"Analyzing text: '{text[:100]}...' (length: {len(text)})\n\n"
         
         # Validate input
         if not text or len(text.strip()) == 0:
@@ -103,12 +103,12 @@ def predict_sentiment(text, model, model_name):
             
         # Get prediction
         prediction = model.predict([text])[0]
-        st.write(f"**Debug - {model_name}:** Raw prediction: {prediction}")
+        debug_info += f"Raw prediction (0: negative, 1: positive): {prediction}\n\n"
         
         # Get prediction probabilities if available
         if hasattr(model, 'predict_proba'):
             proba = model.predict_proba([text])[0]
-            st.write(f"**Debug - {model_name}:** Probabilities: {proba}")
+            debug_info += f"Probabilities: {proba}\n\n"
             confidence = max(proba)
             neg_prob = proba[0]
             pos_prob = proba[1]
@@ -116,7 +116,7 @@ def predict_sentiment(text, model, model_name):
             # For models without predict_proba, use decision function or default
             if hasattr(model, 'decision_function'):
                 decision = model.decision_function([text])[0]
-                st.write(f"**Debug - {model_name}:** Decision function: {decision}")
+                debug_info += f"Decision function: {decision}\n\n"
                 # Convert decision function to pseudo-probability
                 confidence = min(abs(decision) / 2, 0.95)  # Cap at 95%
                 if decision > 0:
@@ -131,6 +131,9 @@ def predict_sentiment(text, model, model_name):
                 neg_prob = 0.25 if prediction == 1 else 0.75
         
         sentiment = "Positive" if prediction == 1 else "Negative"
+
+        with st.expander("View debug info"):
+            st.write(debug_info)
         
         return {
             'sentiment': sentiment,

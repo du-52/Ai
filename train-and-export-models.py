@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 
 """# **Loading the dataset**
 
-since the dataset is already split into training and testing, less work for us yay
+Load dataset from `tensorflow_datasets`. Use the built-in `split` parameter to split the dataset into training and test sets. Hurray for less manual work!
 """
 
 ds, info = tfds.load("imdb_reviews", split=["train", "test"], with_info=True, as_supervised=True)

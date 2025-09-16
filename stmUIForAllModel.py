@@ -1,3 +1,4 @@
+# streamlit run stmUIForAllModel.py
 import streamlit as st
 import joblib
 import pandas as pd

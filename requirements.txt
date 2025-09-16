@@ -1,9 +1,10 @@
 streamlit
 numpy
 pandas
-nltk
 scikit-learn
-matplotlib
-seaborn
-scipy
 plotly
+joblib
+tensorflow
+tensorflow_datasets
+scipy
+matplotlib

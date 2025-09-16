@@ -433,7 +433,7 @@ if lr_accuracy >= mnb_accuracy and lr_accuracy >= acc:
     best_model_name = "Logistic Regression"
     best_accuracy = lr_accuracy
 elif mnb_accuracy >= lr_accuracy and mnb_accuracy >= acc:
-    best_model = mnb_model
+    best_model = best_mnb
     best_model_name = "Multinomial Naive Bayes"
     best_accuracy = mnb_accuracy
 else:

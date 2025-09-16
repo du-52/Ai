@@ -91,7 +91,7 @@ def get_confidence_level(prob):
     else:
         return "Low", "confidence-low"
 
-def predict_sentiment(text, model, model_name, expander: st.delta_generator.DeltaGenerator):
+def predict_sentiment(text, model, model_name, expander: st.delta_generator.DeltaGenerator=None):
     """Predict sentiment using the given model"""
     try:
         # Debug: Show the input text
@@ -381,59 +381,63 @@ def main():
         )
         
         if st.button("Analyze Batch"):  # the trigger of the user press the button
-            if batch_reviews.strip():   #process the input
-                reviews_list = [review.strip() for review in batch_reviews.split('\n') if review.strip()]
-                
-                if reviews_list:
-                    batch_results = []
-                    debug_info_expander = st.expander("View debug info")
-                    progress_bar = st.progress(0)
-                    #anlaysis all the review 
-                    for i, review in enumerate(reviews_list):
-                        review_results = {}
-                        for model_name in selected_models:
-                            model = models[model_name]
-                            result = predict_sentiment(review, model, model_name, debug_info_expander)
-                            if result:
-                                review_results[model_name] = result['sentiment']
-                        
-                        batch_results.append({
-                            'Review': review[:100] + '...' if len(review) > 100 else review,
-                            **review_results
-                        })
-                        
-                        progress_bar.progress((i + 1) / len(reviews_list))
-                    
-                    # Convert batch results to DataFrame 
-                    df = pd.DataFrame(batch_results)    #convert the result into dataframe format , easy for data analysis & change the data into 2d
+            if not batch_reviews:   
+                st.warning("Please enter a movie review to analyze!")
 
-                    # Create a Styler to style the dataframe
-                    def highlight(val):
-                        color = "#8b0000" if val.lower() == "negative" else "#006400"
-                        return f"background-color: {color}"
-                    
-                    df_styled = df.style.applymap(highlight, subset=df.columns[1:])
-
-                    # Display batch results
-                    st.dataframe(df_styled, use_container_width=True)
-                    
-                    # Summary statistics
-                    summary_data = []
+            #process the input
+            batch_reviews = batch_reviews.strip()
+            reviews_list = [review.strip() for review in batch_reviews.split('\n') if review.strip()]
+            
+            if reviews_list:
+                batch_results = []
+                debug_info_expander = st.expander("View debug info")
+                progress_bar = st.progress(0)
+                #anlaysis all the review 
+                for i, review in enumerate(reviews_list):
+                    review_results = {}
                     for model_name in selected_models:
-                        if model_name in df.columns:
-                            positive_count = (df[model_name] == 'Positive').sum()
-                            negative_count = (df[model_name] == 'Negative').sum()
-                            summary_data.append({
-                                'Model': model_name,
-                                'Positive': positive_count,
-                                'Negative': negative_count,
-                                'Total': len(df)
-                            })
+                        model = models[model_name]
+                        result = predict_sentiment(review, model, model_name, debug_info_expander)
+                        if result:
+                            review_results[model_name] = result['sentiment']
                     
-                    if summary_data:
-                        st.subheader("Summary")
-                        summary_df = pd.DataFrame(summary_data)
-                        st.dataframe(summary_df, use_container_width=True)
+                    batch_results.append({
+                        'Review': review[:100] + '...' if len(review) > 100 else review,
+                        **review_results
+                    })
+                    
+                    progress_bar.progress((i + 1) / len(reviews_list))
+                
+                # Convert batch results to DataFrame 
+                df = pd.DataFrame(batch_results)    #convert the result into dataframe format , easy for data analysis & change the data into 2d
+
+                # Create a Styler to style the dataframe
+                def highlight(val):
+                    color = "#8b0000" if val.lower() == "negative" else "#006400"
+                    return f"background-color: {color}"
+                
+                df_styled = df.style.applymap(highlight, subset=df.columns[1:])
+
+                # Display batch results
+                st.dataframe(df_styled, use_container_width=True)
+                
+                # Summary statistics
+                summary_data = []
+                for model_name in selected_models:
+                    if model_name in df.columns:
+                        positive_count = (df[model_name] == 'Positive').sum()
+                        negative_count = (df[model_name] == 'Negative').sum()
+                        summary_data.append({
+                            'Model': model_name,
+                            'Positive': positive_count,
+                            'Negative': negative_count,
+                            'Total': len(df)
+                        })
+                
+                if summary_data:
+                    st.subheader("Summary")
+                    summary_df = pd.DataFrame(summary_data)
+                    st.dataframe(summary_df, use_container_width=True)
     
 
 if __name__ == "__main__":

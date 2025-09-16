@@ -91,11 +91,11 @@ def get_confidence_level(prob):
     else:
         return "Low", "confidence-low"
 
-def predict_sentiment(text, model, model_name):
+def predict_sentiment(text, model, model_name, expander: st.delta_generator.DeltaGenerator):
     """Predict sentiment using the given model"""
     try:
         # Debug: Show the input text
-        debug_info = f"Analyzing text: '{text[:100]}...' (length: {len(text)})\n\n"
+        debug_info = f"**Debug - {model_name}:** Analyzing text: '{text[:100]}...' (length: {len(text)})\n\n"
         
         # Validate input
         if not text or len(text.strip()) == 0:
@@ -104,12 +104,12 @@ def predict_sentiment(text, model, model_name):
             
         # Get prediction
         prediction = model.predict([text])[0]
-        debug_info += f"Raw prediction (0: negative, 1: positive): {prediction}\n\n"
+        debug_info += f"**Debug - {model_name}:** Raw prediction (0: negative, 1: positive): {prediction}\n\n"
         
         # Get prediction probabilities if available
         if hasattr(model, 'predict_proba'):
             proba = model.predict_proba([text])[0]
-            debug_info += f"Probabilities: {proba}\n\n"
+            debug_info += f"**Debug - {model_name}:** Probabilities: {proba}\n\n"
             confidence = max(proba)
             neg_prob = proba[0]
             pos_prob = proba[1]
@@ -117,7 +117,7 @@ def predict_sentiment(text, model, model_name):
             # For models without predict_proba, use decision function or default
             if hasattr(model, 'decision_function'):
                 decision = model.decision_function([text])[0]
-                debug_info += f"Decision function: {decision}\n\n"
+                debug_info += f"**Debug - {model_name}:** Decision function: {decision}\n\n"
                 # Convert decision function to pseudo-probability
                 confidence = min(abs(decision) / 2, 0.95)  # Cap at 95%
                 if decision > 0:
@@ -133,7 +133,10 @@ def predict_sentiment(text, model, model_name):
         
         sentiment = "Positive" if prediction == 1 else "Negative"
 
-        with st.expander("View debug info"):
+        if expander is None:
+            expander = st.expander("View debug info")
+        
+        with expander:
             st.write(debug_info)
         
         return {
@@ -383,13 +386,14 @@ def main():
                 
                 if reviews_list:
                     batch_results = []
+                    debug_info_expander = st.expander("View debug info")
                     progress_bar = st.progress(0)
                     #anlaysis all the review 
                     for i, review in enumerate(reviews_list):
                         review_results = {}
                         for model_name in selected_models:
                             model = models[model_name]
-                            result = predict_sentiment(review, model, model_name)
+                            result = predict_sentiment(review, model, model_name, debug_info_expander)
                             if result:
                                 review_results[model_name] = result['sentiment']
                         
@@ -400,9 +404,18 @@ def main():
                         
                         progress_bar.progress((i + 1) / len(reviews_list))
                     
-                    # Display batch results
+                    # Convert batch results to DataFrame 
                     df = pd.DataFrame(batch_results)    #convert the result into dataframe format , easy for data analysis & change the data into 2d
-                    st.dataframe(df, use_container_width=True)
+
+                    # Create a Styler to style the dataframe
+                    def highlight(val):
+                        color = "#8b0000" if val.lower() == "negative" else "#006400"
+                        return f"background-color: {color}"
+                    
+                    df_styled = df.style.applymap(highlight, subset=df.columns[1:])
+
+                    # Display batch results
+                    st.dataframe(df_styled, use_container_width=True)
                     
                     # Summary statistics
                     summary_data = []
